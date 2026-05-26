@@ -34,11 +34,11 @@ HA 2026.5 removed the `hassio-main` panel registration. The Supervisor Panel sid
 
 ```yaml
 panel_custom:
-  - name: super-panel
+  - name: supervisor-panel
     sidebar_title: Supervisor Panel
     sidebar_icon: mdi:home-assistant
     url_path: super-panel
-    module_url: /local/super-panel.js
+    module_url: /local/supervisor-panel.js
     require_admin: true
 ```
 
@@ -46,17 +46,17 @@ panel_custom:
 
 ### Manual Install
 
-1. Download `super-panel.js` from this repo
+1. Download `supervisor-panel.js` from this repo
 2. Place it in your `/config/www/` folder
 3. Add the following to your `configuration.yaml`:
 
 ```yaml
 panel_custom:
-  - name: super-panel
+  - name: supervisor-panel
     sidebar_title: Supervisor Panel
     sidebar_icon: mdi:home-assistant
-    url_path: super-panel
-    module_url: /local/super-panel.js
+    url_path: supervisor-panel
+    module_url: /local/supervisor-panel.js
     require_admin: true
 ```
 
@@ -64,7 +64,7 @@ panel_custom:
 
 ## Removal
 
-1. Delete `super-panel.js` from `/config/www/`
+1. Delete `supervisor-panel.js` from `/config/www/`
 2. Remove the `panel_custom` entry from `configuration.yaml`
 3. Full HA restart required
 
