@@ -38,7 +38,7 @@ panel_custom:
     sidebar_title: Supervisor Panel
     sidebar_icon: mdi:home-assistant
     url_path: supervisor-panel
-    module_url: /local/supervisor-panel.js
+    module_url: /local/community/supervisor-panel/supervisor-panel.js
     require_admin: true
 ```
 
@@ -56,7 +56,7 @@ panel_custom:
     sidebar_title: Supervisor Panel
     sidebar_icon: mdi:home-assistant
     url_path: supervisor-panel
-    module_url: /local/supervisor-panel.js
+    module_url: /local/community/supervisor-panel/supervisor-panel.js
     require_admin: true
 ```
 
