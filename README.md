@@ -75,7 +75,7 @@ If the panel does not refresh after a HACS update:
 4. **Close the browser completely**
 5. Reopen the browser and navigate to Home Assistant
 
-> **Note:** "Clear site data" alone is not reliable for Home Assistant's service worker cache. Unregistering the service worker and closing the browser completely is the only method confirmed to work consistently. Simply hitting refresh after unregistering will not work.
+> **Note:** "Unregistering the service worker and closing the browser completely is the only method confirmed to work consistently. Simply hitting refresh or shift-ctrl-R after unregistering will not work."
 
 > **Cloudflare users:** You may also need to purge the cache from your Cloudflare dashboard under **Caching → Configuration → Purge Everything** after updating.
 
