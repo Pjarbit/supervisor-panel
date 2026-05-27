@@ -1,12 +1,12 @@
 /**
  * Supervisor Panel for Home Assistant
  * Replaces the Supervisor sidebar panel removed in HA 2026.5
- * @version 1.0.5
+ * @version 1.0.7
  * @author Pjarbit
  * @license MIT
  */
 
-const SUPERVISOR_PANEL_VERSION = '1.0.5';
+const SUPERVISOR_PANEL_VERSION = '1.0.7';
 
 class SupervisorPanel extends HTMLElement {
   connectedCallback() {
