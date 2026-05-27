@@ -1,4 +1,14 @@
-class SuperPanel extends HTMLElement {
+/**
+ * Supervisor Panel for Home Assistant
+ * Replaces the Supervisor sidebar panel removed in HA 2026.5
+ * @version 1.0.5
+ * @author Pjarbit
+ * @license MIT
+ */
+
+const SUPERVISOR_PANEL_VERSION = '1.0.5';
+
+class SupervisorPanel extends HTMLElement {
   connectedCallback() {
     this.style.cssText = 'display:block;height:100%;overflow:auto;background:var(--primary-background-color,#111)';
     this._logPaused = false;
@@ -7,14 +17,21 @@ class SuperPanel extends HTMLElement {
 
     this.render();
 
+    // hassConnection is provided by the HA frontend — guard against it being unavailable
+    if (typeof hassConnection === 'undefined') {
+      this._showError('Home Assistant connection unavailable');
+      return;
+    }
+
     hassConnection.then(c => {
       this._conn = c.conn;
       this._load();
+      // Refresh logs every 10 seconds unless paused
       this._logInterval = setInterval(() => {
         if (!this._logPaused) this._loadLogs();
       }, 10000);
     }).catch(err => {
-      console.error('Failed to get hassConnection', err);
+      console.error('[SupervisorPanel] Failed to get hassConnection:', err);
       this._showError('Failed to connect to Home Assistant');
     });
   }
@@ -23,16 +40,19 @@ class SuperPanel extends HTMLElement {
     if (this._logInterval) clearInterval(this._logInterval);
   }
 
+  /** Send a WebSocket message to HA core */
   async _ws(msg) {
-    if (!this._conn) throw new Error("WebSocket not connected");
+    if (!this._conn) throw new Error('WebSocket not connected');
     return this._conn.sendMessagePromise(msg);
   }
 
+  /** Get the current Bearer token from the HA auth session */
   async _getToken() {
     const c = await hassConnection;
     return c.auth.data.access_token;
   }
 
+  /** Fetch logs from the Supervisor REST API (requires Bearer auth) */
   async _apiLogs(endpoint) {
     const token = await this._getToken();
     const r = await fetch(`/api/hassio/${endpoint}`, {
@@ -57,12 +77,14 @@ class SuperPanel extends HTMLElement {
         .row { display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.85em; }
         .label { color:var(--secondary-text-color,#aaa); }
         .value { color:var(--primary-text-color,#fff); font-weight:500; }
+        .value.warning { color:#ff9800; }
         .bar-wrap { background:rgba(255,255,255,0.1); border-radius:4px; height:6px; margin-top:4px; margin-bottom:10px; overflow:hidden; }
         .bar { height:100%; border-radius:4px; transition:width 0.4s; }
         .bar.low { background:#4caf50; }
         .bar.mid { background:#ff9800; }
         .bar.high { background:#f44336; }
-        .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.07); }
+        .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.07); align-items:center; }
+        .panel-version-tag { font-size:0.65em; color:var(--secondary-text-color,#888); margin-left:auto; letter-spacing:0.05em; }
         button {
           background:transparent;
           border:1px solid #00adb5;
@@ -157,6 +179,7 @@ class SuperPanel extends HTMLElement {
             <div class="actions">
               <button id="btn-reboot-host" class="teal">Reboot Host</button>
               <button id="btn-shutdown-host" class="orange">Shutdown Host</button>
+              <span class="panel-version-tag">PJA | v<span id="panel-version"></span></span>
             </div>
           </div>
         </div>
@@ -164,7 +187,7 @@ class SuperPanel extends HTMLElement {
           <div class="log-header">
             <h2>Logs</h2>
             <div class="log-controls">
-              <input class="log-search" id="log-search" placeholder="Filter logs..." />
+              <input class="log-search" id="log-search" placeholder="Filter logs..." maxlength="100" />
               <select class="log-select" id="log-source">
                 <option value="core">Core</option>
                 <option value="supervisor" selected>Supervisor</option>
@@ -180,6 +203,8 @@ class SuperPanel extends HTMLElement {
       <div class="toast" id="toast"></div>
     `;
 
+    const vEl = this.querySelector('#panel-version');
+    if (vEl) vEl.textContent = SUPERVISOR_PANEL_VERSION;
     this.querySelector('#btn-refresh').onclick = () => this._load();
     this.querySelector('#btn-restart-core').onclick = () => this._wsAction('homeassistant', 'restart', 'Restart Core', true);
     this.querySelector('#btn-restart-supervisor').onclick = () => this._wsAction('hassio', 'restart_supervisor', 'Restart Supervisor', true);
@@ -197,16 +222,19 @@ class SuperPanel extends HTMLElement {
     };
   }
 
+  /** Returns a color-coded progress bar HTML string based on percentage */
   _bar(pct) {
     const p = parseFloat(pct) || 0;
     const cls = p < 50 ? 'low' : p < 80 ? 'mid' : 'high';
     return `<div class="bar-wrap"><div class="bar ${cls}" style="width:${p}%"></div></div>`;
   }
 
-  _row(label, value) {
-    return `<div class="row"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+  /** Returns a label/value row HTML string */
+  _row(label, value, cssClass = '') {
+    return `<div class="row"><span class="label">${label}</span><span class="value${cssClass ? ' ' + cssClass : ''}">${value}</span></div>`;
   }
 
+  /** Returns version HTML with optional update badge */
   _versionHtml(entity) {
     if (!entity) return '—';
     const installed = entity.attributes.installed_version || '—';
@@ -217,6 +245,10 @@ class SuperPanel extends HTMLElement {
     return installed;
   }
 
+  /**
+   * Find a state entity by exact entity_id.
+   * Accepts multiple IDs as fallbacks.
+   */
   _findState(states, ...ids) {
     for (const id of ids) {
       const e = states.find(s => s.entity_id === id);
@@ -225,84 +257,71 @@ class SuperPanel extends HTMLElement {
     return null;
   }
 
-  // Find System Monitor entity by matching platform + unit/device_class
-  // This works regardless of language/locale entity naming
-  _findSysMon(states, unitOrClass, secondaryCheck) {
+  /**
+   * Find a System Monitor entity by keyword matching on entity_id and unit.
+   * Uses entity_id substring matching rather than locale-dependent names,
+   * so it works regardless of the user's HA language setting.
+   */
+  _findSysMonEntity(states, idKeywords, units) {
+    // Match by keyword on entity_id — works with or without 'system_monitor' prefix
     return states.find(s => {
-      if (!s.entity_id.includes('system_monitor') && 
-          s.attributes?.platform !== 'system_monitor' &&
-          !s.attributes?.integration === 'system_monitor') {
-        // Fall through to unit matching across all sensors
+      if (!s.entity_id.startsWith('sensor.')) return false;
+      const hasKeyword = idKeywords.some(k => s.entity_id.includes(k));
+      if (!hasKeyword) return false;
+      if (units && units.length) {
+        return units.includes(s.attributes?.unit_of_measurement);
       }
-      if (secondaryCheck && !secondaryCheck(s)) return false;
-      return s.attributes?.unit_of_measurement === unitOrClass ||
-             s.attributes?.device_class === unitOrClass;
-    });
-  }
-
-  _findSysMonByUnit(states, unit, mustInclude) {
-    return states.find(s => {
-      if (s.domain !== 'sensor' && !s.entity_id.startsWith('sensor.')) return false;
-      if (s.attributes?.unit_of_measurement !== unit) return false;
-      if (mustInclude && !s.entity_id.includes(mustInclude)) return false;
       return true;
-    });
+    }) || null;
   }
 
   async _load() {
     try {
       const states = await this._ws({ type: 'get_states' });
 
-      // Core card — use system monitor for CPU/RAM
-      // Try named entity first, fall back to attribute-based matching for non-English installs
+      // --- Core card ---
       const coreUpdate = this._findState(states, 'update.home_assistant_core_update');
-      
-      const cpuLoad = states.find(s => s.entity_id.includes('system_monitor') && 
-        (s.entity_id.includes('load_1m') || s.entity_id.includes('processor_load') || s.entity_id.includes('load1')));
-      
-      const ramPct = states.find(s => s.entity_id.includes('system_monitor') && 
-        s.attributes?.unit_of_measurement === '%' &&
-        (s.entity_id.includes('memory_usage') || s.entity_id.includes('memory_use_percent') || s.entity_id.includes('virtual_memory')));
-      
-      const ramUse = states.find(s => s.entity_id.includes('system_monitor') && 
-        (s.attributes?.unit_of_measurement === 'MiB' || s.attributes?.unit_of_measurement === 'MB') &&
-        (s.entity_id.includes('memory_use') && !s.entity_id.includes('percent') && !s.entity_id.includes('usage')));
-      
-      const ramFree = states.find(s => s.entity_id.includes('system_monitor') && 
-        (s.attributes?.unit_of_measurement === 'MiB' || s.attributes?.unit_of_measurement === 'MB') &&
-        s.entity_id.includes('memory_free'));
+
+      const cpuLoad = this._findSysMonEntity(states,
+        ['load_1m', 'processor_load', 'load1'], null);
+
+      const ramPct = this._findSysMonEntity(states,
+        ['memory_usage', 'memory_use_percent', 'virtual_memory'], ['%']);
+
+      const ramUse = this._findSysMonEntity(states,
+        ['memory_use'], ['MiB', 'MB', 'GB', 'GiB']);
+
+      const ramFree = this._findSysMonEntity(states,
+        ['memory_free'], ['MiB', 'MB', 'GB', 'GiB']);
 
       this.querySelector('#core-info').innerHTML =
         this._row('Version', this._versionHtml(coreUpdate)) +
         this._row('CPU Load (1m)', (parseFloat(cpuLoad?.state) || 0).toFixed(2)) +
         this._row('RAM Usage', (parseFloat(ramPct?.state) || 0).toFixed(1) + '%') +
         this._bar(ramPct?.state) +
-        this._row('RAM Used', ramUse?.state ? parseFloat(ramUse.state).toFixed(0) + ' MB' : '—') +
-        this._row('RAM Free', ramFree?.state ? parseFloat(ramFree.state).toFixed(0) + ' MB' : '—');
+        this._row('RAM Used', ramUse?.state ? parseFloat(ramUse.state).toFixed(1) + ' ' + (ramUse.attributes?.unit_of_measurement || 'MB') : '—') +
+        this._row('RAM Free', ramFree?.state ? parseFloat(ramFree.state).toFixed(1) + ' ' + (ramFree.attributes?.unit_of_measurement || 'MB') : '—');
 
-      // Supervisor card
+      // --- Supervisor card ---
       const supUpdate = this._findState(states, 'update.home_assistant_supervisor_update');
+      const updateAvailable = supUpdate?.state === 'on';
+
       this.querySelector('#supervisor-info').innerHTML =
         this._row('Version', this._versionHtml(supUpdate)) +
-        this._row('Update Available', supUpdate?.state === 'on'
-          ? '<span style="color:#ff9800">Yes</span>' : 'No');
+        this._row('Update Available', updateAvailable ? 'Yes' : 'No', updateAvailable ? 'warning' : '');
 
-      // Host card — system monitor disk + last boot
-      const diskPct = states.find(s => s.entity_id.includes('system_monitor') && 
-        s.attributes?.unit_of_measurement === '%' &&
-        s.entity_id.includes('disk'));
-      
-      const diskFree = states.find(s => s.entity_id.includes('system_monitor') && 
-        (s.attributes?.unit_of_measurement === 'GiB' || s.attributes?.unit_of_measurement === 'GB') &&
-        s.entity_id.includes('disk') && s.entity_id.includes('free'));
-      
-      const diskUse = states.find(s => s.entity_id.includes('system_monitor') && 
-        (s.attributes?.unit_of_measurement === 'GiB' || s.attributes?.unit_of_measurement === 'GB') &&
-        s.entity_id.includes('disk') && (s.entity_id.includes('use') || s.entity_id.includes('used')) &&
-        !s.entity_id.includes('free') && !s.entity_id.includes('percent') && !s.entity_id.includes('usage'));
-      
-      const lastBoot = states.find(s => s.entity_id.includes('system_monitor') && 
-        s.entity_id.includes('last_boot'));
+      // --- Host card ---
+      const diskPct = this._findSysMonEntity(states,
+        ['disk_usage', 'disk_use_percent'], ['%']);
+
+      const diskFree = this._findSysMonEntity(states,
+        ['disk_free'], ['GiB', 'GB']);
+
+      const diskUse = this._findSysMonEntity(states,
+        ['disk_use'], ['GiB', 'GB']);
+
+      const lastBoot = this._findSysMonEntity(states,
+        ['last_boot'], null);
 
       this.querySelector('#host-info').innerHTML =
         this._row('Last Boot', lastBoot?.state ? new Date(lastBoot.state).toLocaleString() : '—') +
@@ -312,10 +331,12 @@ class SuperPanel extends HTMLElement {
         this._row('Disk Free', diskFree?.state ? parseFloat(diskFree.state).toFixed(1) + ' GB' : '—');
 
       this.querySelector('#last-updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+
+      // Only load logs after states succeed
       this._loadLogs();
 
     } catch (e) {
-      console.error(e);
+      console.error('[SupervisorPanel] _load error:', e);
       this._showError(e.message);
     }
   }
@@ -329,6 +350,7 @@ class SuperPanel extends HTMLElement {
     if (!pre) return;
     try {
       const text = await this._apiLogs(endpoint);
+      // Strip ANSI escape codes and keep last 200 lines
       this._rawLines = text.trim().split('\n')
         .slice(-200)
         .map(l => l.replace(/\x1b\[[0-9;]*m/g, ''));
@@ -341,7 +363,9 @@ class SuperPanel extends HTMLElement {
   _filterLogs() {
     const pre = this.querySelector('#log-output');
     if (!pre) return;
-    const search = (this.querySelector('#log-search')?.value || '').toLowerCase().trim();
+    // Sanitize search input before use
+    const raw = this.querySelector('#log-search')?.value || '';
+    const search = raw.toLowerCase().trim().slice(0, 100);
     const filtered = search
       ? this._rawLines.filter(l => l.toLowerCase().includes(search))
       : this._rawLines;
@@ -354,10 +378,12 @@ class SuperPanel extends HTMLElement {
     if (!search) pre.scrollTop = pre.scrollHeight;
   }
 
+  /** Escape HTML special characters to prevent XSS in log output */
   _esc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  /** Call a HA service via WebSocket with optional confirmation dialog */
   async _wsAction(domain, service, label, needsConfirm) {
     if (needsConfirm && !window.confirm(`${label}?\nThis will affect your Home Assistant instance.`)) return;
     this._toast(`${label}...`);
@@ -365,10 +391,12 @@ class SuperPanel extends HTMLElement {
       await this._ws({ type: 'call_service', domain, service, service_data: {} });
       this._toast(`${label} initiated.`);
     } catch (e) {
+      console.error(`[SupervisorPanel] _wsAction ${domain}.${service} failed:`, e);
       this._toast(`Error: ${e.message}`);
     }
   }
 
+  /** Show an error message in all three stat cards */
   _showError(msg) {
     ['core-info', 'supervisor-info', 'host-info'].forEach(id => {
       const el = this.querySelector(`#${id}`);
@@ -376,6 +404,7 @@ class SuperPanel extends HTMLElement {
     });
   }
 
+  /** Show a temporary toast notification */
   _toast(msg) {
     const t = this.querySelector('#toast');
     if (!t) return;
@@ -386,4 +415,4 @@ class SuperPanel extends HTMLElement {
   }
 }
 
-customElements.define('supervisor-panel', SuperPanel);
+customElements.define('supervisor-panel', SupervisorPanel);
