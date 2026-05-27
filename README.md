@@ -25,7 +25,7 @@ HA 2026.5 removed the `hassio-main` panel registration. The Supervisor Panel sid
 
 ## Installation
 
-### HACS (Custom Repository)
+### HACS
 
 1. In HACS go to **Frontend** → **Custom Repositories**
 2. Add `https://github.com/Pjarbit/supervisor-panel` as category **Frontend**
@@ -56,15 +56,22 @@ panel_custom:
     sidebar_title: Supervisor Panel
     sidebar_icon: mdi:home-assistant
     url_path: supervisor-panel
-    module_url: /local/community/supervisor-panel/supervisor-panel.js
+    module_url: /local/supervisor-panel.js
     require_admin: true
 ```
 
 4. Full HA restart required
 
+## After Updating
+
+If the panel does not refresh after a HACS update, press **F12 → Application → Clear site data** and reload the page.
+
+> ## Cloudflare Users
+> **You may also need to purge the cache from your Cloudflare dashboard under **Caching → Configuration → Purge Everything** after updating.**
+
 ## Removal
 
-1. Delete `supervisor-panel.js` from `/config/www/`
+1. Delete `supervisor-panel.js` from `/config/www/` (manual) or uninstall via HACS
 2. Remove the `panel_custom` entry from `configuration.yaml`
 3. Full HA restart required
 
