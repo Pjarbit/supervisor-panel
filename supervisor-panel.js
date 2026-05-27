@@ -283,7 +283,7 @@ class SupervisorPanel extends HTMLElement {
       const coreUpdate = this._findState(states, 'update.home_assistant_core_update');
 
       const cpuLoad = this._findSysMonEntity(states,
-        ['load_1m', 'processor_load', 'load1'], null);
+        ['load_1_min', 'load_1m', 'processor_load', 'load1'], null);
 
       const ramPct = this._findSysMonEntity(states,
         ['memory_usage', 'memory_use_percent', 'virtual_memory'], ['%']);
