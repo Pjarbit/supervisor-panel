@@ -25,6 +25,9 @@ HA 2026.5 removed the `hassio-main` panel registration. The Supervisor Panel sid
 
 ## Installation
 
+> ⚠️ **Important:** The `module_url` in `configuration.yaml` is different depending on whether you install via HACS or manually. Use the correct block for your install method or the panel will not load.
+
+
 ### HACS
 
 1. In HACS go to **Frontend** → **Custom Repositories**
@@ -64,10 +67,17 @@ panel_custom:
 
 ## After Updating
 
-If the panel does not refresh after a HACS update, press **F12 → Application → Clear site data** and reload the page.
+If the panel does not refresh after a HACS update:
 
-> ## Cloudflare Users
-> **You may also need to purge the cache from your Cloudflare dashboard under **Caching → Configuration → Purge Everything** after updating.**
+1. Press **F12** to open DevTools
+2. Go to **Application → Service Workers**
+3. Click **Unregister** next to your Home Assistant URL
+4. **Close the browser completely**
+5. Reopen the browser and navigate to Home Assistant
+
+> **Note:** "Clear site data" alone is not reliable for Home Assistant's service worker cache. Unregistering the service worker and closing the browser completely is the only method confirmed to work consistently. Simply hitting refresh after unregistering will not work.
+
+> **Cloudflare users:** You may also need to purge the cache from your Cloudflare dashboard under **Caching → Configuration → Purge Everything** after updating.
 
 ## Removal
 
@@ -82,7 +92,7 @@ If the stats cards show dashes, make sure the System Monitor integration is inst
 
 ## A Note from the Developer
 
-This integration is free and will always be free. If you find it useful, skip the coffee and give $5 to someone who needs it.
+This integration is free and will always be free. If you find it useful, skip the coffee and give $5 to someone who deserves it.
 
 ## License
 
