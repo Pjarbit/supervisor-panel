@@ -1,5 +1,6 @@
 {
   "name": "Supervisor Panel",
+  "filename": "supervisor-panel.js",
   "content_in_root": true,
   "zip_release": false,
   "render_readme": true
