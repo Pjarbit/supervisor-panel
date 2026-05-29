@@ -41,7 +41,6 @@ panel_custom:
 
 5. Full HA restart required
 
-
 ### Manual Install
 1. Download `supervisor-panel.js` from this repo
 2. Place it in your `/config/www/` folder
@@ -93,71 +92,37 @@ You cannot have both a manual install and a HACS install active at the same time
 
 ### Disk Not Showing
 
-If your disk usage still shows dashes or 0.0% after installing, your system may use different entity names for disk data. You can manually set the correct entity IDs in the JS file.
+If your disk usage still shows dashes or 0.0%, your system may use different entity names than what the panel expects.
 
-**Step 1 — Find your disk entity IDs**
+**Recommended Fix — Create Template Helpers**
 
-1. In Home Assistant go to **Settings → Developer Tools**
-2. Click the **States** tab
-3. In the search box type `disk`
-4. Look for entities with units of `%`, `GB`, or `GiB`
-5. The entity ID is the text on the left, for example `sensor.disk_use_percent` or `sensor.system_monitor_disk_usage`
-6. You need three entity IDs — one for disk percentage, one for disk free, and one for disk used.  
-   Example:  
-   `sensor.dans_disk_use_percent`  
-   `sensor.dans_disk_free`  
-   `sensor.dans_disk_used`
+This is the easiest fix and survives HACS updates. First find your disk entity IDs:
 
-**Step 2 — Edit the JS file**
+1. Go to **Settings → Developer Tools → States**
+2. Type `disk` in the search box
+3. Look for entities with units of `%`, `GB`, or `GiB`
+4. Copy the entity IDs from the left column — you need three:
+   - Disk percentage (unit: `%`)
+   - Disk free (unit: `GB` or `GiB`)
+   - Disk used (unit: `GB` or `GiB`)
 
-Using File Editor or VS Code, open:
-- HACS install: `/config/www/community/supervisor-panel/supervisor-panel.js`
-- Manual install: `/config/www/supervisor-panel/supervisor-panel.js`
+Then add the following to your `configuration.yaml` under `template:`, substituting your actual entity IDs:
 
-Make these three changes using the part of your entity ID after `sensor.` — for example if your disk % entity is `sensor.disk_use_percent` you would use `disk_use_percent`.
-
-Using the entity IDs you found in Step 1, replace the contents of the brackets with your entity names.
-
-For example, if your entities are `sensor.dans_disk_free_percent`, `sensor.dans_disk_free`, and `sensor.dans_disk_used`:
-
-**Change 1 — Disk percentage:**
-
-Find:
-```
-['disk_usage', 'disk_use_percent']
-```
-Change to:
-```
-['disk_usage', 'dans_disk_free_percent']
+```yaml
+template:
+  - sensor:
+      - name: "disk_usage"
+        unit_of_measurement: "%"
+        state: "{{ states('sensor.your_disk_percent_entity') }}"
+      - name: "disk_free"
+        unit_of_measurement: "GB"
+        state: "{{ states('sensor.your_disk_free_entity') }}"
+      - name: "disk_use"
+        unit_of_measurement: "GB"
+        state: "{{ states('sensor.your_disk_used_entity') }}"
 ```
 
-**Change 2 — Disk free:**
-
-Find:
-```
-['disk_free']
-```
-Change to:
-```
-['dans_disk_free']
-```
-
-**Change 3 — Disk used:**
-
-Find:
-```
-['disk_use']
-```
-Change to:
-```
-['dans_disk_used']
-```
-
-**Step 3 — Reload**
-
-Save the file, then unregister the service worker (F12 → Application → Service Workers → Unregister), close the browser completely and reopen.
-
-> ⚠️ **Important:** This change is made to the downloaded file, not the source. If you update the panel via HACS, the file will be overwritten and you will need to make this change again after every update.
+After saving, restart HA and the panel will pick up the new helpers automatically. No JS editing required and this survives future HACS updates.
 
 ## A Note from the Developer
 This integration is free and will always be free. If you find it useful, skip the coffee and give $5 to someone who deserves it.
