@@ -1,12 +1,12 @@
 /**
  * Supervisor Panel for Home Assistant
  * Replaces the Supervisor sidebar panel removed in HA 2026.5
- * @version 1.1.1
+ * @version 1.1.2
  * @author Pjarbit
  * @license MIT
  */
 
-const SUPERVISOR_PANEL_VERSION = '1.1.1';
+const SUPERVISOR_PANEL_VERSION = '1.1.2';
 
 class SupervisorPanel extends HTMLElement {
   connectedCallback() {
@@ -304,11 +304,16 @@ class SupervisorPanel extends HTMLElement {
 
       // --- Supervisor card ---
       const supUpdate = this._findState(states, 'update.home_assistant_supervisor_update');
-      const updateAvailable = supUpdate?.state === 'on';
+      const osUpdate = this._findState(states, 'update.home_assistant_operating_system_update');
+      const supUpdateAvailable = supUpdate?.state === 'on';
+      const osUpdateAvailable = osUpdate?.state === 'on';
 
       this.querySelector('#supervisor-info').innerHTML =
-        this._row('Version', this._versionHtml(supUpdate)) +
-        this._row('Update Available', updateAvailable ? 'Yes' : 'No', updateAvailable ? 'warning' : '');
+      this._row('Version', this._versionHtml(supUpdate)) +
+      this._row('Supervisor Update Available', supUpdateAvailable ? 'Yes' : 'No', supUpdateAvailable ? 'warning' : '') +
+      '<div style="margin:12px 0 8px;font-size:1.1em;color:var(--primary-text-color,#fff);font-weight:500;">HA OS</div>' +
+      this._row('OS Version', this._versionHtml(osUpdate)) +
+      this._row('OS Update Available', osUpdateAvailable ? 'Yes' : 'No', osUpdateAvailable ? 'warning' : '');
 
       // --- Host card ---
       const diskPct = this._findSysMonEntity(states,
