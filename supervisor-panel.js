@@ -1,7 +1,7 @@
 /**
  * Supervisor Panel for Home Assistant
  * Replaces the Supervisor sidebar panel removed in HA 2026.5
- * @version 1.1.2
+ * @version 1.2.0
  * @author Pjarbit
  * @license MIT
  */
@@ -71,7 +71,7 @@ class SupervisorPanel extends HTMLElement {
         .toolbar { display:flex; gap:8px; margin:8px 0 16px; }
         .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:16px; }
         @media(max-width:800px) { .cards { grid-template-columns:1fr; } }
-        .card { background:var(--card-background-color,#1c1c1c); border-radius:12px; padding:16px; box-shadow: 12px 12px 24px rgba(0,0,0,0.5), -4px -4px 8px rgba(255,255,255,0.1), inset -4px -4px 8px rgba(0,0,0,0.2), inset 4px 4px 8px rgba(255,255,255,0.2); display:flex; flex-direction:column; }
+        .card { background:var(--card-background-color,#1c1c1c); border-radius:12px; padding:16px; box-shadow: 12px 12px 24px rgba(0,0,0,0.5), inset -4px -4px 8px rgba(0,0,0,0.2), inset 4px 4px 8px rgba(255,255,255,0.2); display:flex; flex-direction:column; }
         .card h2 { margin:0 0 12px; font-size:1.1em; color:var(--primary-text-color,#fff); }
         .card-body { flex:1; }
         .row { display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.85em; }
@@ -87,8 +87,8 @@ class SupervisorPanel extends HTMLElement {
         .panel-version-tag { font-size:0.65em; color:var(--secondary-text-color,#888); margin-left:auto; letter-spacing:0.05em; }
         button {
           background:transparent;
-          border:1px solid #00adb5;
-          color:#00adb5;
+          border:1px solid #03a9f4;
+          color:#03a9f4;
           padding:6px 14px;
           border-radius:4px;
           cursor:pointer;
@@ -102,21 +102,21 @@ class SupervisorPanel extends HTMLElement {
         button.neutral { border-color:#cccccc; color:#cccccc; }
         button.neutral:hover { background:rgba(204,204,204,0.15); }
         button.teal {
-          background:#00adb5;
-          border-color:#00adb5;
-          color:rgba(255,255,255,0.8);
-          box-shadow: 6px 6px 12px rgba(0,0,0,0.5), -2px -2px 6px rgba(255,255,255,0.1), inset -2px -2px 4px rgba(0,0,0,0.2), inset 2px 2px 4px rgba(255,255,255,0.2);
+          background:#03a9f4;
+          border-color:#03a9f4;
+          color:rgba(255,255,255,1.0);
+          box-shadow: 6px 6px 12px rgba(0,0,0,0.5), -2px -2px 6px rgba(255,255,255,0.1);
         }
-        button.teal:hover { background:#009aa1; box-shadow: 4px 4px 8px rgba(0,0,0,0.5), -1px -1px 4px rgba(255,255,255,0.1); }
+        button.teal:hover { background:#0290d0; box-shadow: 4px 4px 8px rgba(0,0,0,0.5), -1px -1px 4px rgba(255,255,255,0.1); }
         button.orange {
-          background:#ff9800;
-          border-color:#ff9800;
-          color:rgba(255,255,255,0.8);
-          box-shadow: 6px 6px 12px rgba(0,0,0,0.5), -2px -2px 6px rgba(255,255,255,0.1), inset -2px -2px 4px rgba(0,0,0,0.2), inset 2px 2px 4px rgba(255,255,255,0.2);
+          background:#db4437;
+          border-color:#db4437;
+          color:rgba(255,255,255,1.0);
+          box-shadow: 6px 6px 12px rgba(0,0,0,0.5), -2px -2px 6px rgba(255,255,255,0.1);
         }
-        button.orange:hover { background:#e68900; box-shadow: 4px 4px 8px rgba(0,0,0,0.5), -1px -1px 4px rgba(255,255,255,0.1); }
+        button.orange:hover { background:#c23328; box-shadow: 4px 4px 8px rgba(0,0,0,0.5), -1px -1px 4px rgba(255,255,255,0.1); }
         .update-badge { font-size:0.75em; background:#ff9800; color:#000; padding:2px 8px; border-radius:10px; margin-left:8px; }
-        .log-card { background:var(--card-background-color,#1c1c1c); border-radius:12px; padding:16px; box-shadow: 12px 12px 24px rgba(0,0,0,0.5), -4px -4px 8px rgba(255,255,255,0.1), inset -4px -4px 8px rgba(0,0,0,0.2), inset 4px 4px 8px rgba(255,255,255,0.2); }
+        .log-card { background:var(--card-background-color,#1c1c1c); border-radius:12px; padding:16px; box-shadow: 12px 12px 24px rgba(0,0,0,0.5), inset -4px -4px 8px rgba(0,0,0,0.2), inset 4px 4px 8px rgba(255,255,255,0.2); }
         .log-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px; }
         .log-header h2 { margin:0; font-size:1.1em; color:var(--primary-text-color,#fff); }
         .log-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
