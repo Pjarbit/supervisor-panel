@@ -1,12 +1,12 @@
 /**
  * Supervisor Panel for Home Assistant
  * Replaces the Supervisor sidebar panel removed in HA 2026.5
- * @version 1.2.0
+ * @version 1.2.1
  * @author Pjarbit
  * @license MIT
  */
 
-const SUPERVISOR_PANEL_VERSION = '1.2.0';
+const SUPERVISOR_PANEL_VERSION = '1.2.1';
 
 class SupervisorPanel extends HTMLElement {
   /** Set by HA on every state change — keeps the stat cards live without polling */
