@@ -6,18 +6,53 @@
  * @license MIT
  */
 
-const SUPERVISOR_PANEL_VERSION = '1.1.2';
+const SUPERVISOR_PANEL_VERSION = '1.2.0';
 
 class SupervisorPanel extends HTMLElement {
+  /** Set by HA on every state change — keeps the stat cards live without polling */
+  set hass(hass) {
+    this._hass = hass;
+    this._syncMenuButton();
+    this._queueCards();
+  }
+  get hass() { return this._hass; }
+
+  /** Set by HA: true on narrow screens (phone), where the sidebar is hidden */
+  set narrow(narrow) {
+    this._narrow = !!narrow;
+    this._syncMenuButton();
+  }
+  get narrow() { return this._narrow; }
+
   connectedCallback() {
     this.style.cssText = 'display:block;height:100%;overflow:auto;background:var(--primary-background-color,#111)';
     this._logPaused = false;
     this._rawLines = [];
     this._conn = null;
+    this._watched = null;
 
     this.render();
+    this._syncMenuButton();
 
-    // hassConnection is provided by the HA frontend — guard against it being unavailable
+    // Refresh logs every 10 seconds unless paused or the page is in the background
+    clearInterval(this._logInterval);
+    this._logInterval = setInterval(() => {
+      if (!this._logPaused && !document.hidden) this._loadLogs();
+    }, 10000);
+    if (!this._onVisibility) {
+      this._onVisibility = () => {
+        if (!document.hidden && !this._logPaused) this._loadLogs();
+      };
+    }
+    document.addEventListener('visibilitychange', this._onVisibility);
+
+    // Preferred path: HA hands the panel its `hass` object, no extra connection needed
+    if (this._hass) {
+      this._load();
+      return;
+    }
+
+    // Fallback: hassConnection is provided by the HA frontend — guard against it being unavailable
     if (typeof hassConnection === 'undefined') {
       this._showError('Home Assistant connection unavailable');
       return;
@@ -26,10 +61,6 @@ class SupervisorPanel extends HTMLElement {
     hassConnection.then(c => {
       this._conn = c.conn;
       this._load();
-      // Refresh logs every 10 seconds unless paused
-      this._logInterval = setInterval(() => {
-        if (!this._logPaused) this._loadLogs();
-      }, 10000);
     }).catch(err => {
       console.error('[SupervisorPanel] Failed to get hassConnection:', err);
       this._showError('Failed to connect to Home Assistant');
@@ -38,18 +69,70 @@ class SupervisorPanel extends HTMLElement {
 
   disconnectedCallback() {
     if (this._logInterval) clearInterval(this._logInterval);
+    if (this._onVisibility) document.removeEventListener('visibilitychange', this._onVisibility);
+  }
+
+  /**
+   * Sidebar menu button. Custom panels must render their own, otherwise the
+   * sidebar cannot be opened on narrow screens (e.g. the companion app).
+   * Uses HA's own <ha-menu-button> (hides itself on wide screens), with a
+   * plain fallback button until/unless that element is available.
+   */
+  _syncMenuButton() {
+    const slot = this.querySelector('#menu-slot');
+    if (!slot) return;
+
+    if (this._hass && customElements.get('ha-menu-button')) {
+      let btn = slot.querySelector('ha-menu-button');
+      if (!btn) {
+        btn = document.createElement('ha-menu-button');
+        // Set properties before attaching — the element reads hass on first update
+        btn.hass = this._hass;
+        btn.narrow = this._narrow;
+        slot.replaceChildren(btn);
+      } else {
+        btn.hass = this._hass;
+        btn.narrow = this._narrow;
+      }
+      slot.style.display = '';
+      return;
+    }
+
+    let fb = slot.querySelector('.menu-fallback');
+    if (!fb) {
+      fb = document.createElement('button');
+      fb.type = 'button';
+      fb.className = 'menu-fallback';
+      fb.title = 'Open sidebar';
+      fb.setAttribute('aria-label', 'Open sidebar');
+      fb.textContent = '☰';
+      fb.onclick = () => this.dispatchEvent(new Event('hass-toggle-menu', { bubbles: true, composed: true }));
+      slot.replaceChildren(fb);
+      if (!customElements.get('ha-menu-button')) {
+        customElements.whenDefined('ha-menu-button').then(() => this._syncMenuButton());
+      }
+    }
+    const show = this._narrow || this._hass?.dockedSidebar === 'always_hidden';
+    slot.style.display = show ? '' : 'none';
   }
 
   /** Send a WebSocket message to HA core */
   async _ws(msg) {
-    if (!this._conn) throw new Error('WebSocket not connected');
-    return this._conn.sendMessagePromise(msg);
+    const conn = this._hass?.connection || this._conn;
+    if (!conn) throw new Error('WebSocket not connected');
+    return conn.sendMessagePromise(msg);
   }
 
-  /** Get the current Bearer token from the HA auth session */
+  /** Get a valid Bearer token from the HA auth session (refreshed if expired) */
   async _getToken() {
-    const c = await hassConnection;
-    return c.auth.data.access_token;
+    let auth = this._hass?.auth;
+    if (!auth && typeof hassConnection !== 'undefined') auth = (await hassConnection).auth;
+    if (!auth) throw new Error('Not authenticated');
+    // Access tokens expire after 30 minutes; the raw fetch() below does not refresh them
+    if (auth.expired && typeof auth.refreshAccessToken === 'function') {
+      await auth.refreshAccessToken();
+    }
+    return auth.accessToken || auth.data.access_token;
   }
 
   /** Fetch logs from the Supervisor REST API (requires Bearer auth) */
@@ -62,11 +145,24 @@ class SupervisorPanel extends HTMLElement {
     return r.text();
   }
 
+  /** POST to the Supervisor REST API (e.g. supervisor/restart, which has no HA action) */
+  async _apiPost(endpoint) {
+    const token = await this._getToken();
+    const r = await fetch(`/api/hassio/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return true;
+  }
+
   render() {
     this.innerHTML = `
       <style>
         .page { padding:16px; max-width:1200px; margin:0 auto; font-family:var(--paper-font-body1_-_font-family,Roboto,sans-serif); }
-        h1 { color:var(--primary-text-color,#fff); font-size:1.4em; margin:0 0 4px; display:flex; align-items:center; gap:12px; }
+        h1 { color:var(--primary-text-color,#fff); font-size:1.4em; margin:0 0 4px; display:flex; align-items:center; flex-wrap:wrap; }
+        h1 .title { margin-right:12px; }
+        #menu-slot { display:inline-flex; align-items:center; color:var(--primary-text-color,#fff); }
         .updated { font-size:0.75em; color:var(--secondary-text-color,#aaa); }
         .toolbar { display:flex; gap:8px; margin:8px 0 16px; }
         .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:16px; }
@@ -97,8 +193,10 @@ class SupervisorPanel extends HTMLElement {
           letter-spacing:0.05em;
           transition:all 0.2s;
         }
-        button:hover { background:rgba(0,173,181,0.15); }
+        button:hover { background:rgba(3,169,244,0.15); }
         button:disabled { opacity:0.4; cursor:default; }
+        button.menu-fallback { border:none; color:var(--primary-text-color,#fff); font-size:1.2em; padding:4px 12px 4px 0; text-transform:none; letter-spacing:0; }
+        button.menu-fallback:hover { background:transparent; }
         button.neutral { border-color:#cccccc; color:#cccccc; }
         button.neutral:hover { background:rgba(204,204,204,0.15); }
         button.teal {
@@ -154,7 +252,7 @@ class SupervisorPanel extends HTMLElement {
         @keyframes spin { to { transform:rotate(360deg); } }
       </style>
       <div class="page">
-        <h1>Supervisor <span class="updated" id="last-updated"></span></h1>
+        <h1><span id="menu-slot"></span><span class="title">Supervisor</span><span class="updated" id="last-updated"></span></h1>
         <div class="toolbar">
           <button id="btn-refresh" class="teal">↻ Refresh All</button>
         </div>
@@ -207,7 +305,7 @@ class SupervisorPanel extends HTMLElement {
     if (vEl) vEl.textContent = SUPERVISOR_PANEL_VERSION;
     this.querySelector('#btn-refresh').onclick = () => this._load();
     this.querySelector('#btn-restart-core').onclick = () => this._wsAction('homeassistant', 'restart', 'Restart Core', true);
-    this.querySelector('#btn-restart-supervisor').onclick = () => this._wsAction('hassio', 'restart_supervisor', 'Restart Supervisor', true);
+    this.querySelector('#btn-restart-supervisor').onclick = () => this._apiAction('supervisor/restart', 'Restart Supervisor', true);
     this.querySelector('#btn-reboot-host').onclick = () => this._wsAction('hassio', 'host_reboot', 'Reboot Host', true);
     this.querySelector('#btn-shutdown-host').onclick = () => this._wsAction('hassio', 'host_shutdown', 'Shutdown Host', true);
     this.querySelector('#log-source').onchange = () => this._loadLogs();
@@ -224,7 +322,7 @@ class SupervisorPanel extends HTMLElement {
 
   /** Returns a color-coded progress bar HTML string based on percentage */
   _bar(pct) {
-    const p = parseFloat(pct) || 0;
+    const p = Math.min(100, Math.max(0, parseFloat(pct) || 0));
     const cls = p < 50 ? 'low' : p < 80 ? 'mid' : 'high';
     return `<div class="bar-wrap"><div class="bar ${cls}" style="width:${p}%"></div></div>`;
   }
@@ -277,8 +375,44 @@ class SupervisorPanel extends HTMLElement {
 
   async _load() {
     try {
-      const states = await this._ws({ type: 'get_states' });
+      const states = this._hass
+        ? Object.values(this._hass.states)
+        : await this._ws({ type: 'get_states' });
+      this._renderCards(states);
 
+      // Only load logs after states succeed
+      this._loadLogs();
+
+    } catch (e) {
+      console.error('[SupervisorPanel] _load error:', e);
+      this._showError(e.message);
+    }
+  }
+
+  /** Batch rapid hass updates into one check per frame */
+  _queueCards() {
+    if (this._cardsQueued || !this._watched) return;
+    this._cardsQueued = true;
+    requestAnimationFrame(() => {
+      this._cardsQueued = false;
+      this._refreshCardsIfChanged();
+    });
+  }
+
+  /** Re-render the stat cards only when one of the displayed entities changed */
+  _refreshCardsIfChanged() {
+    if (!this._hass || !this._watched) return;
+    const states = this._hass.states;
+    if (!this._watched.some(s => states[s.entity_id] !== s)) return;
+    try {
+      this._renderCards(Object.values(states));
+    } catch (e) {
+      console.error('[SupervisorPanel] render error:', e);
+    }
+  }
+
+  /** Render the three stat cards from a list of state objects */
+  _renderCards(states) {
       // --- Core card ---
       const coreUpdate = this._findState(states, 'update.home_assistant_core_update');
 
@@ -337,13 +471,9 @@ class SupervisorPanel extends HTMLElement {
 
       this.querySelector('#last-updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
-      // Only load logs after states succeed
-      this._loadLogs();
-
-    } catch (e) {
-      console.error('[SupervisorPanel] _load error:', e);
-      this._showError(e.message);
-    }
+      // Remember what is displayed so live hass updates only re-render on relevant changes
+      this._watched = [coreUpdate, cpuLoad, ramPct, ramUse, ramFree, supUpdate, osUpdate,
+        diskPct, diskFree, diskUse, lastBoot].filter(Boolean);
   }
 
   async _loadLogs() {
@@ -401,6 +531,19 @@ class SupervisorPanel extends HTMLElement {
     }
   }
 
+  /** Call a Supervisor REST endpoint with optional confirmation dialog */
+  async _apiAction(endpoint, label, needsConfirm) {
+    if (needsConfirm && !window.confirm(`${label}?\nThis will affect your Home Assistant instance.`)) return;
+    this._toast(`${label}...`);
+    try {
+      await this._apiPost(endpoint);
+      this._toast(`${label} initiated.`);
+    } catch (e) {
+      console.error(`[SupervisorPanel] _apiAction ${endpoint} failed:`, e);
+      this._toast(`Error: ${e.message}`);
+    }
+  }
+
   /** Show an error message in all three stat cards */
   _showError(msg) {
     ['core-info', 'supervisor-info', 'host-info'].forEach(id => {
@@ -420,4 +563,7 @@ class SupervisorPanel extends HTMLElement {
   }
 }
 
-customElements.define('supervisor-panel', SupervisorPanel);
+// Guard against double registration (e.g. HACS and manual install loaded at the same time)
+if (!customElements.get('supervisor-panel')) {
+  customElements.define('supervisor-panel', SupervisorPanel);
+}
